@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import binascii
 
 KEY = [
     0x64, 0x73, 0x66, 0x64, 0x3b, 0x6b, 0x66, 0x6f,
@@ -7,20 +8,53 @@ KEY = [
     0x55, 0x42
 ]
 
-def decode_type7(enc):
+def decode_type7_verbose(enc: str) -> str:
+    enc = enc.strip()
+
+    if len(enc) < 4:
+        raise ValueError("Too short for Type 7 (needs at least 2 offset chars + 1 byte).")
+
+    if not enc[:2].isdigit():
+        raise ValueError("First 2 chars must be digits (offset).")
+
     offset = int(enc[:2])
-    enc = enc[2:]
-    out = ""
+    hex_part = enc[2:]
 
-    for i in range(0, len(enc), 2):
-        b = int(enc[i:i+2], 16)
-        out += chr(b ^ KEY[(offset + i // 2) % len(KEY)])
+    if len(hex_part) % 2 != 0:
+        raise ValueError("Hex payload length must be even.")
 
-    return out
+    try:
+        cipher_bytes = bytes.fromhex(hex_part)
+    except ValueError:
+        raise ValueError("Payload is not valid hex.")
+
+    print("\n=== Cisco Type 7 Decode (Verbose) ===")
+    print(f"Input:        {enc}")
+    print(f"Offset:       {offset}")
+    print(f"Cipher (hex): {hex_part}")
+    print(f"Bytes:        {len(cipher_bytes)}\n")
+
+    out_bytes = bytearray()
+
+    print("idx | cipher | key_idx | key  | plain | ascii")
+    print("----+--------+---------+------+-------+------")
+
+    for i, b in enumerate(cipher_bytes):
+        key_idx = (offset + i) % len(KEY)
+        k = KEY[key_idx]
+        p = b ^ k
+        out_bytes.append(p)
+        ascii_char = chr(p) if 32 <= p <= 126 else "."
+        print(f"{i:>3} | 0x{b:02x}   |  {key_idx:>3}    | 0x{k:02x} | 0x{p:02x}  |  {ascii_char}")
+
+    try:
+        decoded = out_bytes.decode("utf-8", errors="replace")
+    except Exception:
+        decoded = out_bytes.decode("latin-1", errors="replace")
+
+    print("\nDecoded text:", decoded)
+    return decoded
 
 if __name__ == "__main__":
-    cipher = input("Agrega lo ofuscado en Cisco 7: ").strip()
-    try:
-        print("Texto claro:", decode_type7(cipher))
-    except Exception as e:
-        print("Error: entrada no válida")
+    s = input("Paste Cisco Type 7 string: ")
+    decode_type7_verbose(s)
